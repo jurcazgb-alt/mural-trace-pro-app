@@ -4,7 +4,7 @@ name: Deploy Mural Trace Pro
 on:
   push:
     branches:
-      - v5.2-local-wasm
+      - v5.3-svg-bridge
   workflow_dispatch:
 
 permissions:
