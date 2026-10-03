@@ -1,38 +1,14 @@
 'use strict';
 const $=id=>document.getElementById(id), $$=q=>[...document.querySelectorAll(q)];
-const state={vtracerSvg:null,engineUsed:null,image:null,file:null,url:null,width:0,height:0,workW:0,workH:0,labels:null,colors:[],paths:[],edges:null,view:'original',zoom:1,panX:0,panY:0,mode:'image',busy:false};
+const state={vtracerSvg:null,engineUsed:null,image:null,file:null,url:null,width:0,height:0,workW:0,workH:0,labels:null,colors:[],paths:[],edges:null,view:'original',zoom:1,mode:'image',busy:false};
 const helperColors=['#9b67e4','#399cff','#f14e61','#49c275','#2ad7e5','#f4d84d','#f085b8','#83b16c','#ef9e56','#8fc8ff','#c881e1'];
 function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
 function status(s){$('status').textContent='● '+s;$('traceInfo').textContent=s}
 function download(name,data,type){let b=data instanceof Blob?data:new Blob([data],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),15000)}
 function escapeXML(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]))}
-async function loadBlob(blob,name){if(!blob||!blob.type.startsWith('image/')){toast('Odaberite PNG, JPG ili WebP sliku.');return}let uri=URL.createObjectURL(blob),img=new Image();try{await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=uri});}catch(e){URL.revokeObjectURL(uri);toast('Neuspješno otvaranje slike.');return}if(state.url)URL.revokeObjectURL(state.url);state.url=uri;state.image=img;state.file=blob;state.width=img.naturalWidth;state.height=img.naturalHeight;state.paths=[];state.edges=null;state.labels=null;state.colors=[];state.vtracerSvg=null;state.engineUsed=null;$('sourceImg').src=uri;$('empty').style.display='none';$('artInner').style.display='block';$('imgInfo').textContent=`${name} · ${state.width} × ${state.height}px · ${(blob.size/1048576).toFixed(2)} MB`;$('bottomLeft').textContent=`${name} — ${state.width} × ${state.height} px`;$('vectorLayer').innerHTML='';const ratio=state.width/state.height;let box=$('artboard').getBoundingClientRect();let h=Math.max(150,box.height-68),w=Math.max(150,box.width-70);if(w/h>ratio)w=h*ratio;else h=w/ratio;$('renderArea').style.width=Math.floor(w)+'px';$('renderArea').style.height=Math.floor(h)+'px';state.zoom=1;state.panX=0;state.panY=0;applyZoom();setView('original');status('IZVORNIK UČITAN')}
+async function loadBlob(blob,name){if(!blob||!blob.type.startsWith('image/')){toast('Odaberite PNG, JPG ili WebP sliku.');return}let uri=URL.createObjectURL(blob),img=new Image();try{await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=uri});}catch(e){URL.revokeObjectURL(uri);toast('Neuspješno otvaranje slike.');return}if(state.url)URL.revokeObjectURL(state.url);state.url=uri;state.image=img;state.file=blob;state.width=img.naturalWidth;state.height=img.naturalHeight;state.paths=[];state.edges=null;state.labels=null;state.colors=[];state.vtracerSvg=null;state.engineUsed=null;$('sourceImg').src=uri;$('empty').style.display='none';$('artInner').style.display='block';$('imgInfo').textContent=`${name} · ${state.width} × ${state.height}px · ${(blob.size/1048576).toFixed(2)} MB`;$('bottomLeft').textContent=`${name} — ${state.width} × ${state.height} px`;$('vectorLayer').innerHTML='';const ratio=state.width/state.height;let box=$('artboard').getBoundingClientRect();let h=Math.max(150,box.height-68),w=Math.max(150,box.width-70);if(w/h>ratio)w=h*ratio;else h=w/ratio;$('renderArea').style.width=Math.floor(w)+'px';$('renderArea').style.height=Math.floor(h)+'px';state.zoom=1;applyZoom();setView('original');status('IZVORNIK UČITAN')}
 async function demo(){document.getElementById('fileInput').click();toast('Odaberi vlastitu fotografiju za testiranje.');}
-function applyZoom(){
- const surface=$('artInner');
- surface.style.transform=`translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.zoom})`;
- $('zoomText').textContent=Math.round(state.zoom*100)+'%';
-}
-function fitImage(){
- if(!state.image)return;
- const box=$('artboard').getBoundingClientRect();
- const maxW=Math.max(80,box.width-36),maxH=Math.max(80,box.height-36);
- const ratio=Math.min(maxW/state.width,maxH/state.height);
- $('renderArea').style.width=Math.max(1,Math.floor(state.width*ratio))+'px';
- $('renderArea').style.height=Math.max(1,Math.floor(state.height*ratio))+'px';
- state.zoom=1;state.panX=0;state.panY=0;applyZoom();
-}
-function normalizeSVGViewport(svg,w,h){
- const doc=new DOMParser().parseFromString(svg,'image/svg+xml');
- if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw Error('Neispravan SVG');
- const root=doc.documentElement;
- // VTracer raster coordinates always start at 0,0. Never clip due to missing/incorrect viewBox.
- root.setAttribute('viewBox',`0 0 ${w} ${h}`);
- root.setAttribute('width',String(w));root.setAttribute('height',String(h));
- root.setAttribute('preserveAspectRatio','xMidYMid meet');
- root.style.setProperty('overflow','visible');
- return new XMLSerializer().serializeToString(root);
-}
+function applyZoom(){$('artInner').style.transform=`scale(${state.zoom})`;$('zoomText').textContent=Math.round(state.zoom*100)+'%'}
 const gnum=id=>Number($(id).value);
 function medianGray(im,w,h,r){if(!r)return im;let o=new Uint8Array(im.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let vals=[];for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++)vals.push(im[yy*w+xx]);vals.sort((a,b)=>a-b);o[y*w+x]=vals[vals.length>>1]}return o}
 function quantize(gray,k){let centers=Array.from({length:k},(_,i)=>Math.round(255*i/(k-1)));const n=gray.length,labels=new Uint8Array(n);for(let it=0;it<7;it++){let counts=new Float64Array(k),sums=new Float64Array(k);for(let p=0;p<n;p++){let val=gray[p],best=0,dist=Infinity;for(let j=0;j<k;j++){let d=Math.abs(val-centers[j]);if(d<dist){dist=d;best=j}}labels[p]=best;sums[best]+=val;counts[best]++}for(let j=0;j<k;j++)if(counts[j])centers[j]=Math.round(sums[j]/counts[j]);}return {labels,centers}}
@@ -41,8 +17,27 @@ function createGeometry(labels,w,h,k,epsilon){let all=[];let edges=[];const at=(
  // Each grid edge belongs to the bordering region(s). All views share these coordinates.
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let a=at(x,y),right=at(x+1,y),down=at(x,y+1);if(a!==right){const p=[x+1,y,x+1,y+1,a,right];edges.push(p);boundaries[a].push([x+1,y,x+1,y+1]);if(right>=0)boundaries[right].push([x+1,y+1,x+1,y]);}if(a!==down){let p=[x,y+1,x+1,y+1,a,down];edges.push(p);boundaries[a].push([x+1,y+1,x,y+1]);if(down>=0)boundaries[down].push([x,y+1,x+1,y+1]);}if(x===0)boundaries[a].push([0,y+1,0,y]);if(y===0)boundaries[a].push([x,y,x+1,y]);}
  for(let i=0;i<k;i++){let es=boundaries[i],adj=new Map();for(let j=0;j<es.length;j++){let e=es[j],key=e[0]+','+e[1];if(!adj.has(key))adj.set(key,[]);adj.get(key).push(j)}let used=new Uint8Array(es.length),parts=[];for(let z=0;z<es.length;z++){if(used[z])continue;let chain=[],idx=z,steps=0;while(idx!==undefined&&!used[idx]&&steps++<es.length+1){used[idx]=1;let e=es[idx];if(!chain.length)chain.push([e[0],e[1]]);chain.push([e[2],e[3]]);let next=adj.get(e[2]+','+e[3]);idx=next?.find(q=>!used[q]);if(chain.length>4&&chain.at(-1)[0]===chain[0][0]&&chain.at(-1)[1]===chain[0][1])break}if(chain.length>3){let red=simplifyPoints(chain,epsilon),d='M'+red.map(p=>p.join(' ')).join('L')+'Z';parts.push(d)}}all.push(parts.join(''))}return {paths:all,edges}}
-async function traceLocal(){if(!state.image||state.busy){toast('Prvo učitaj sliku.');return}state.busy=true;$('process').disabled=true;try{status('OBRAĐUJEM SLIKU...');$('bar').style.width='14%';await new Promise(r=>setTimeout(r,30));const limit=gnum('detail'),ratio=Math.min(1,limit/Math.max(state.width,state.height));let w=Math.max(1,Math.round(state.width*ratio)),h=Math.max(1,Math.round(state.height*ratio));let c=document.createElement('canvas');c.width=w;c.height=h;let cx=c.getContext('2d',{willReadFrequently:true});cx.fillStyle='white';cx.fillRect(0,0,w,h);cx.drawImage(state.image,0,0,w,h);let pixels=cx.getImageData(0,0,w,h).data;let grayscale=new Uint8Array(w*h);for(let i=0;i<w*h;i++){let p=i*4;grayscale[i]=Math.round(.2126*pixels[p]+.7152*pixels[p+1]+.0722*pixels[p+2])}grayscale=medianGray(grayscale,w,h,gnum('smooth'));$('bar').style.width='37%';await new Promise(r=>setTimeout(r,20));let {labels,centers}=quantize(grayscale,gnum('tones'));$('bar').style.width='57%';await new Promise(r=>setTimeout(r,20));let {paths,edges}=createGeometry(labels,w,h,centers.length,gnum('simplify'));state.engineUsed='local';state.vtracerSvg=null;state.workW=w;state.workH=h;state.labels=labels;state.paths=paths;state.edges=edges;state.colors=centers.map(v=>`#${v.toString(16).padStart(2,'0').repeat(3)}`);$('palette').innerHTML=state.colors.map((c,i)=>`<i title="Ton ${i+1}: ${c}" style="background:${c}"></i>`).join('');$('bar').style.width='100%';status(`GOTOVO · ${paths.length} TONOVA · ${edges.length.toLocaleString('hr-HR')} RUBOVA`);$('bottomRight').textContent=`${w} × ${h} px · ${edges.length.toLocaleString('hr-HR')} vektorskih segmenata · BROWSER VECTOR`;setView('vector');toast('Stvarni vektorski oblici izrađeni.');}catch(e){status('POGREŠKA: '+e.message);toast(e.message)}finally{state.busy=false;$('process').disabled=false}}
+async function traceLocal(){if(!state.image||state.busy){toast('Prvo učitaj sliku.');return}state.busy=true;$('process').disabled=true;try{status('OBRAĐUJEM SLIKU...');$('bar').style.width='14%';await new Promise(r=>setTimeout(r,30));const {w,h}=traceDimensions(gnum('detail'));let c=document.createElement('canvas');c.width=w;c.height=h;let cx=c.getContext('2d',{willReadFrequently:true});cx.fillStyle='white';cx.fillRect(0,0,w,h);cx.drawImage(state.image,0,0,w,h);let pixels=cx.getImageData(0,0,w,h).data;let grayscale=new Uint8Array(w*h);for(let i=0;i<w*h;i++){let p=i*4;grayscale[i]=Math.round(.2126*pixels[p]+.7152*pixels[p+1]+.0722*pixels[p+2])}grayscale=medianGray(grayscale,w,h,gnum('smooth'));$('bar').style.width='37%';await new Promise(r=>setTimeout(r,20));let {labels,centers}=quantize(grayscale,gnum('tones'));$('bar').style.width='57%';await new Promise(r=>setTimeout(r,20));let {paths,edges}=createGeometry(labels,w,h,centers.length,gnum('simplify'));state.engineUsed='local';state.vtracerSvg=null;state.workW=w;state.workH=h;state.labels=labels;state.paths=paths;state.edges=edges;state.colors=centers.map(v=>`#${v.toString(16).padStart(2,'0').repeat(3)}`);$('palette').innerHTML=state.colors.map((c,i)=>`<i title="Ton ${i+1}: ${c}" style="background:${c}"></i>`).join('');$('bar').style.width='100%';status(`GOTOVO · ${paths.length} TONOVA · ${edges.length.toLocaleString('hr-HR')} RUBOVA`);$('bottomRight').textContent=`${w} × ${h} px · ${edges.length.toLocaleString('hr-HR')} vektorskih segmenata · BROWSER VECTOR`;setView('vector');toast('Stvarni vektorski oblici izrađeni.');}catch(e){status('POGREŠKA: '+e.message);toast(e.message)}finally{state.busy=false;$('process').disabled=false}}
 
+// Keep raster and SVG in the same immutable full-frame coordinate space.
+function traceDimensions(maxDimension){
+ const longest=Math.max(state.width,state.height);
+ if(!longest||!Number.isFinite(maxDimension)||maxDimension<=0)throw Error('Neispravne dimenzije slike');
+ const scale=Math.min(1,maxDimension/longest);
+ return {w:Math.max(1,Math.round(state.width*scale)),h:Math.max(1,Math.round(state.height*scale))};
+}
+function normalizeSvgFrame(svg,w,h){
+ const doc=new DOMParser().parseFromString(svg,'image/svg+xml');
+ if(doc.querySelector('parsererror')||doc.documentElement.localName!=='svg')throw Error('Neispravan SVG dokument');
+ const root=doc.documentElement;
+ // VTracer coordinates are derived from the exact w×h raster fed to WASM.
+ // A missing/incorrect viewBox makes large images visually cropped in CSS.
+ root.setAttribute('viewBox',`0 0 ${w} ${h}`);
+ root.setAttribute('width',String(w));root.setAttribute('height',String(h));
+ root.setAttribute('preserveAspectRatio','xMidYMid meet');
+ root.setAttribute('overflow','hidden');
+ return new XMLSerializer().serializeToString(root);
+}
 function hasVTracer(){return state.engineUsed==='vtracer' && !!state.vtracerSvg}
 function vtracerOnlyNotice(){toast('Outline i Kolorit za VTracer još nisu topološki izvedeni. Prebacite mehanizam na Lokalni JS i ponovno obradite sliku.');}
 async function trace(){
@@ -52,8 +47,7 @@ async function trace(){
  try{
   status('VTRACER WASM · OBRADA LOKALNO NA IPADU...');$('bar').style.width='15%';
   if(!window.MuralBrowserTracer?.convertPixels)throw Error('Preglednički WASM nije instaliran. Potrebna je izgradnja projekta (npm run build).');
-  const limit=gnum('detail'), ratio=Math.min(1,limit/Math.max(state.width,state.height));
-  const w=Math.max(1,Math.round(state.width*ratio)), h=Math.max(1,Math.round(state.height*ratio));
+  const {w,h}=traceDimensions(gnum('detail'));
   const c=document.createElement('canvas');c.width=w;c.height=h;
   const ctx=c.getContext('2d',{willReadFrequently:true});
   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);ctx.drawImage(state.image,0,0,w,h);
@@ -73,7 +67,7 @@ async function trace(){
   const doc=new DOMParser().parseFromString(raw,'image/svg+xml');
   if(doc.querySelector('parsererror,script,foreignObject,image,iframe,object,animate,animateMotion,animateTransform'))throw Error('Nesiguran ili neispravan SVG');
   for(const el of doc.querySelectorAll('*'))for(const at of [...el.attributes])if(/^on/i.test(at.name)||/^(href|xlink:href)$/i.test(at.name)||/url\s*\(/i.test(at.value))throw Error('Nedopušten SVG atribut');
-  state.vtracerSvg=normalizeSVGViewport(new XMLSerializer().serializeToString(doc.documentElement),w,h);
+  state.vtracerSvg=normalizeSvgFrame(new XMLSerializer().serializeToString(doc.documentElement),w,h);
   state.engineUsed='vtracer';state.paths=[];state.edges=null;state.workW=w;state.workH=h;
   const count=doc.querySelectorAll('path').length;
   $('bar').style.width='100%';status(`VTRACER BROWSER WASM · ${count} STVARNIH PUTANJA`);
@@ -84,8 +78,26 @@ async function trace(){
 }
 
 // Unified SVG geometry adapter: every output reuses original VTracer path data.
+// Mandatory frame normalization at EVERY SVG consumer boundary.
+// Older VTracer SVG lacks a viewBox: CSS width:100% then clips paths at
+// x = displayed CSS width rather than scaling all source coordinates.
+function ensureVTracerViewport(svg){
+ if(!svg)return svg;
+ const parser=new DOMParser();
+ const doc=parser.parseFromString(svg,'image/svg+xml');
+ if(doc.querySelector('parsererror'))throw Error('Neispravan SVG dokument');
+ const root=doc.documentElement;
+ const w=state.workW||state.width;
+ const h=state.workH||state.height;
+ if(!(w>0&&h>0))throw Error('Nepoznate dimenzije SVG-a');
+ root.setAttribute('viewBox',`0 0 ${w} ${h}`);
+ root.setAttribute('width',String(w));
+ root.setAttribute('height',String(h));
+ root.setAttribute('preserveAspectRatio','xMidYMid meet');
+ return new XMLSerializer().serializeToString(root);
+}
 function unifiedVTracerSVG(mode){
- if(mode==='vector'||mode==='tones'||mode==='compare')return state.vtracerSvg;
+ if(mode==='vector'||mode==='tones'||mode==='compare')return ensureVTracerViewport(state.vtracerSvg);
  const doc=new DOMParser().parseFromString(state.vtracerSvg,'image/svg+xml');
  if(doc.querySelector('parsererror'))throw Error('SVG parsing failed');
  const root=doc.documentElement;
@@ -138,41 +150,23 @@ function unifiedVTracerSVG(mode){
   }
  }
  const out=new XMLSerializer().serializeToString(root);
- return normalizeSVGViewport(out,state.workW,state.workH);
+ return out;
 }
 
 function svgPaths(mode){const w=state.workW,h=state.workH,paths=state.paths,cs=state.colors;if(!paths.length)return '';let parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,`<rect width="100%" height="100%" fill="#ffffff"/>`];if(['vector','tones','kolorit'].includes(mode)){for(let i=0;i<paths.length;i++){let base=cs[i],fill=base;if(mode==='kolorit'&&i>0&&i<paths.length-1){let anth=gnum('tones')>=5&&i===1;if(anth)fill=$('anthracite').value;else fill=helperColors[(i-2+helperColors.length)%helperColors.length]}let alpha=mode==='kolorit'&&i>1&&i<paths.length-1?gnum('colorOpacity')/100:1;parts.push(`<path id="tone-${i}" d="${paths[i]}" fill="${fill}" fill-opacity="${alpha}" fill-rule="evenodd"/>`)}}
  if(['outline','boundaries','kolorit'].includes(mode)){if(mode!=='kolorit')parts.push('<rect width="100%" height="100%" fill="white"/>');let main=[],secondary=[];const seen=new Set();for(let e of state.edges){let [x1,y1,x2,y2,a,b]=e;const key=x1+','+y1+','+x2+','+y2;if(seen.has(key))continue;seen.add(key);const isMain=b<0||a===0||b===0||a===paths.length-1||b===paths.length-1; (isMain?main:secondary).push(`M${x1} ${y1}L${x2} ${y2}`)}let burgundy=mode!=='outline'&&$('showBurgundy').checked,black=$('showBlack').checked;if(burgundy)parts.push(`<path d="${secondary.join('')}" stroke="#800020" stroke-opacity="${gnum('opacity')/100}" stroke-width="${gnum('edgeWidth')}" fill="none"/>`);if(black)parts.push(`<path d="${main.join('')}" stroke="#000" stroke-width="1.3" fill="none"/>`)}parts.push('</svg>');return parts.join('')}
 function gridSvg(){if(!$('showGrid').checked||!state.image)return '';let w=state.workW||state.width,h=state.workH||state.height,wallW=gnum('wallW'),wallH=gnum('wallH'),step=gnum('gridStep');if(!wallW||!wallH||!step)return '';let sw=w/wallW,sh=h/wallH,lines=[];for(let x=0;x<wallW&&lines.length<150;x+=step)lines.push(`<line x1="${(x*sw).toFixed(2)}" y1="0" x2="${(x*sw).toFixed(2)}" y2="${h}"/>`);for(let y=0;y<wallH&&lines.length<300;y+=step)lines.push(`<line x1="0" y1="${(y*sh).toFixed(2)}" x2="${w}" y2="${(y*sh).toFixed(2)}"/>`);return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"><g stroke="#dc883d" stroke-width="0.7" stroke-opacity="0.85">${lines.join('')}</g></svg>`}
-function setView(view){state.view=view;$$('[data-view]').forEach(b=>b.classList.toggle('selected',b.dataset.view===view));$('sourceImg').style.display=view==='original'||view==='compare'?'block':'none';if(!state.image)return;let mode=view==='compare'?'vector':view==='original'?'':view;if(!state.paths.length&&!hasVTracer()&&mode){$('sourceImg').style.display='block';$('vectorLayer').innerHTML='';$('viewStatus').textContent='PRVO GENERIRAJ VEKTOR';return}if(mode){$('vectorLayer').innerHTML=hasVTracer()?unifiedVTracerSVG(mode):svgPaths(mode);$('vectorLayer').style.opacity=view==='compare'?'0.55':'1'}else $('vectorLayer').innerHTML='';$('gridLayer').innerHTML=gridSvg();$('viewStatus').textContent=({original:'IZVORNIK · NEIZMIJENJEN',vector:'STVARNE SVG PUTANJE',outline:'GLAVNE CRNE KONTURE',boundaries:'KONTURE · JEDINSTVENA GEOMETRIJA',kolorit:'POMOĆNA KARTA TONOVA',tones:'IZVORNE TONSKE KLASE',compare:'PREKLAPANJE 55%'})[view]}
-function exportSVG(view){if(hasVTracer()){download(`mural_${view}_vtracer.svg`,unifiedVTracerSVG(view),'image/svg+xml');return}if(!state.paths.length){toast('Najprije generiraj vektor.');return}download(`mural_${view}.svg`,svgPaths(view),'image/svg+xml')}
+function setView(view){state.view=view;$$('[data-view]').forEach(b=>b.classList.toggle('selected',b.dataset.view===view));$('sourceImg').style.display=view==='original'||view==='compare'?'block':'none';if(!state.image)return;let mode=view==='compare'?'vector':view==='original'?'':view;if(!state.paths.length&&!hasVTracer()&&mode){$('sourceImg').style.display='block';$('vectorLayer').innerHTML='';$('viewStatus').textContent='PRVO GENERIRAJ VEKTOR';return}if(mode){$('vectorLayer').innerHTML=hasVTracer()?ensureVTracerViewport(unifiedVTracerSVG(mode)):svgPaths(mode);$('vectorLayer').style.opacity=view==='compare'?'0.55':'1'}else $('vectorLayer').innerHTML='';$('gridLayer').innerHTML=gridSvg();$('viewStatus').textContent=({original:'IZVORNIK · NEIZMIJENJEN',vector:'STVARNE SVG PUTANJE',outline:'GLAVNE CRNE KONTURE',boundaries:'KONTURE · JEDINSTVENA GEOMETRIJA',kolorit:'POMOĆNA KARTA TONOVA',tones:'IZVORNE TONSKE KLASE',compare:'PREKLAPANJE 55%'})[view]}
+function exportSVG(view){if(hasVTracer()){download(`mural_${view}_vtracer.svg`,ensureVTracerViewport(unifiedVTracerSVG(view)),'image/svg+xml');return}if(!state.paths.length){toast('Najprije generiraj vektor.');return}download(`mural_${view}.svg`,svgPaths(view),'image/svg+xml')}
 function exportPNG(){if(!state.image)return;let w=state.workW||state.width,h=state.workH||state.height,c=document.createElement('canvas');c.width=w;c.height=h;let ctx=c.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,w,h);if(state.view==='original'){ctx.drawImage(state.image,0,0,w,h);c.toBlob(b=>download('mural_original.png',b,'image/png'));return}let svg=hasVTracer()?unifiedVTracerSVG(state.view==='compare'?'vector':state.view):svgPaths(state.view==='compare'?'vector':state.view);let img=new Image(),u=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));img.onload=()=>{ctx.drawImage(img,0,0,w,h);URL.revokeObjectURL(u);c.toBlob(b=>download(`mural_${state.view}.png`,b,'image/png'))};img.onerror=()=>toast('PNG izvoz nije uspio.');img.src=u}
-function projectJSON(){return JSON.stringify({app:'MURAL TRACE PRO',version:'5.3.1 SVG-geometry bridge viewport fix',engine:state.engineUsed==='vtracer'?'VTracer via in-browser WASM and Web Worker (local, no API)':'in-browser grayscale quantization + polygon boundary tracing (NOT VTracer)',image:{width:state.width,height:state.height},trace:{width:state.workW,height:state.workH,tones:gnum('tones'),detail:gnum('detail'),simplification:gnum('simplify'),smoothing:gnum('smooth')},colors:state.colors,regionCount:state.paths.length,edgeCount:state.edges?.length||0,wall:{width_m:gnum('wallW'),height_m:gnum('wallH'),grid_step_m:gnum('gridStep')},exported:new Date().toISOString()},null,2)}
+function projectJSON(){return JSON.stringify({app:'MURAL TRACE PRO',version:'5.3.1 FULL FRAME FIX',engine:state.engineUsed==='vtracer'?'VTracer via in-browser WASM and Web Worker (local, no API)':'in-browser grayscale quantization + polygon boundary tracing (NOT VTracer)',image:{width:state.width,height:state.height},trace:{width:state.workW,height:state.workH,tones:gnum('tones'),detail:gnum('detail'),simplification:gnum('simplify'),smoothing:gnum('smooth')},colors:state.colors,regionCount:state.paths.length,edgeCount:state.edges?.length||0,wall:{width_m:gnum('wallW'),height_m:gnum('wallH'),grid_step_m:gnum('gridStep')},exported:new Date().toISOString()},null,2)}
 function saveJSON(){download('mural_project.json',projectJSON(),'application/json')}
 function exportAll(){if(!state.paths.length&&!hasVTracer()){toast('Najprije generiraj vektor.');return}for(const mode of ['vector','outline','boundaries','kolorit','tones'])exportSVG(mode);saveJSON();toast('Radni prikazi izvezeni kao odvojene datoteke. ZIP nije implementiran.');}
 function mode(m){state.mode=m;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('sectionHead').textContent=({image:'ULAZNA SLIKA',vector:'VEKTORIZACIJA',outline:'OUTLINE',kolorit:'KOLORIT PRO',vr:'PRIPREMA ZIDA',export:'IZVOZ',ai:'AI STATUS'})[m];if(m==='vector')setView('vector');if(m==='outline')setView('boundaries');if(m==='kolorit')setView('kolorit');if(m==='export')$('exportPanel').scrollIntoView({block:'nearest',behavior:'smooth'});if(m==='ai')$('aiPanel').scrollIntoView({block:'nearest',behavior:'smooth'});if(m==='vr'){$('wallPanel').scrollIntoView({block:'nearest',behavior:'smooth'});setView('boundaries')}}
-$('fileInput').onchange=e=>loadBlob(e.target.files[0],e.target.files[0]?.name);$('demo').onclick=$('emptyDemo').onclick=()=>demo().catch(e=>toast(e.message));$('process').onclick=trace;$$('[data-mode]').forEach(b=>b.onclick=()=>mode(b.dataset.mode));$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));['edgeWidth','opacity','colorOpacity','showBlack','showBurgundy','showGrid','wallW','wallH','gridStep','anthracite'].forEach(id=>$(id).addEventListener('input',()=>{if(id==='edgeWidth')$('edgeOut').textContent=$(id).value+' px';if(id==='opacity')$('opacityOut').textContent=$(id).value+'%';if(id==='colorOpacity')$('colorOpacityOut').textContent=$(id).value+'%';setView(state.view)}));['tones','detail','simplify','smooth'].forEach(id=>$(id).addEventListener('input',()=>{$(id+'Out').textContent=$(id).value+(id==='detail'?' px':'')}));$('topExport').onclick=()=>mode('export');$('saveProject').onclick=saveJSON;$('allExport').onclick=exportAll;$$('[data-export]').forEach(b=>b.onclick=()=>{if(b.dataset.export==='svg')exportSVG(state.view==='original'?'vector':state.view);if(b.dataset.export==='png')exportPNG();if(b.dataset.export==='json')saveJSON();if(b.dataset.export==='original'&&state.file)download('original'+(state.file.type==='image/png'?'.png':'.jpg'),state.file,state.file.type)});$('zoomIn').onclick=()=>{state.zoom=Math.min(8,state.zoom*1.25);applyZoom()};
-$('zoomOut').onclick=()=>{state.zoom=Math.max(.1,state.zoom/1.25);applyZoom()};
-$('resetView').onclick=fitImage;
-let drag=null;
-$('artboard').addEventListener('pointerdown',e=>{
- if(!state.image||e.target.closest('button'))return;
- drag={id:e.pointerId,x:e.clientX,y:e.clientY,panX:state.panX,panY:state.panY};
- $('artboard').setPointerCapture(e.pointerId);
-});
-$('artboard').addEventListener('pointermove',e=>{
- if(!drag||drag.id!==e.pointerId)return;
- state.panX=drag.panX+e.clientX-drag.x;
- state.panY=drag.panY+e.clientY-drag.y;
- applyZoom();
-});
-const stopPan=e=>{if(drag&&e.pointerId===drag.id)drag=null;};
-$('artboard').addEventListener('pointerup',stopPan);
-$('artboard').addEventListener('pointercancel',stopPan);
-window.addEventListener('resize',()=>{if(state.image)fitImage()});
+$('fileInput').onchange=e=>loadBlob(e.target.files[0],e.target.files[0]?.name);$('demo').onclick=$('emptyDemo').onclick=()=>demo().catch(e=>toast(e.message));$('process').onclick=trace;$$('[data-mode]').forEach(b=>b.onclick=()=>mode(b.dataset.mode));$$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));['edgeWidth','opacity','colorOpacity','showBlack','showBurgundy','showGrid','wallW','wallH','gridStep','anthracite'].forEach(id=>$(id).addEventListener('input',()=>{if(id==='edgeWidth')$('edgeOut').textContent=$(id).value+' px';if(id==='opacity')$('opacityOut').textContent=$(id).value+'%';if(id==='colorOpacity')$('colorOpacityOut').textContent=$(id).value+'%';setView(state.view)}));['tones','detail','simplify','smooth'].forEach(id=>$(id).addEventListener('input',()=>{$(id+'Out').textContent=$(id).value+(id==='detail'?' px':'')}));$('topExport').onclick=()=>mode('export');$('saveProject').onclick=saveJSON;$('allExport').onclick=exportAll;$$('[data-export]').forEach(b=>b.onclick=()=>{if(b.dataset.export==='svg')exportSVG(state.view==='original'?'vector':state.view);if(b.dataset.export==='png')exportPNG();if(b.dataset.export==='json')saveJSON();if(b.dataset.export==='original'&&state.file)download('original'+(state.file.type==='image/png'?'.png':'.jpg'),state.file,state.file.type)});$('zoomIn').onclick=()=>{state.zoom=Math.min(5,state.zoom*1.25);applyZoom()};$('zoomOut').onclick=()=>{state.zoom=Math.max(.25,state.zoom/1.25);applyZoom()};$('resetView').onclick=()=>{state.zoom=1;applyZoom()};let drag=null;$('artboard').addEventListener('pointerdown',e=>{if(!state.image)return;drag={x:e.clientX,y:e.clientY,dx:0,dy:0};$('artboard').setPointerCapture(e.pointerId)});$('artboard').addEventListener('pointermove',e=>{if(!drag)return;let x=e.clientX-drag.x,y=e.clientY-drag.y;$('artInner').style.translate=x+'px '+y+'px'});$('artboard').addEventListener('pointerup',()=>{if(!drag)return;const tr=getComputedStyle($('artInner')).translate;drag=null});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 // Dependency-free ZIP (STORE method), preserving raw vector XML and original image.
 function crc32(bytes){let c=0xffffffff;for(let b of bytes){c^=b;for(let i=0;i<8;i++)c=(c>>>1)^((c&1)?0xedb88320:0)}return(c^0xffffffff)>>>0}
 function makeZIP(items){let entries=[],local=[],central=[],offset=0,encoder=new TextEncoder();const u16=(d,i,v)=>d.setUint16(i,v,true),u32=(d,i,v)=>d.setUint32(i,v>>>0,true);for(let [name,bytes] of items){let file=encoder.encode(name),crc=crc32(bytes),lh=new Uint8Array(30+file.length),v=new DataView(lh.buffer);u32(v,0,0x04034b50);u16(v,4,20);u16(v,6,0x800);u16(v,8,0);u32(v,14,crc);u32(v,18,bytes.length);u32(v,22,bytes.length);u16(v,26,file.length);lh.set(file,30);local.push(lh,bytes);let ch=new Uint8Array(46+file.length),cv=new DataView(ch.buffer);u32(cv,0,0x02014b50);u16(cv,4,20);u16(cv,6,20);u16(cv,8,0x800);u32(cv,16,crc);u32(cv,20,bytes.length);u32(cv,24,bytes.length);u16(cv,28,file.length);u32(cv,42,offset);ch.set(file,46);central.push(ch);offset+=lh.length+bytes.length}let clen=central.reduce((a,b)=>a+b.length,0),end=new Uint8Array(22),ev=new DataView(end.buffer);u32(ev,0,0x06054b50);u16(ev,8,items.length);u16(ev,10,items.length);u32(ev,12,clen);u32(ev,16,offset);return new Blob([...local,...central,end],{type:'application/zip'})}
-async function exportPackage(){if(hasVTracer()){let enc=new TextEncoder(),items=[...['vector','outline','boundaries','kolorit'].map(mode=>[`mural_${mode}_vtracer.svg`,enc.encode(unifiedVTracerSVG(mode))]),['project.json',enc.encode(projectJSON())],['original.'+(state.file.type==='image/png'?'png':state.file.type==='image/webp'?'webp':'jpg'),new Uint8Array(await state.file.arrayBuffer())],['manifest.json',enc.encode(JSON.stringify({engine:'VTracer browser WASM',geometry:'shared VTracer SVG paths; stroke outlines are approximate and are not deduplicated region boundaries',generated:new Date().toISOString()},null,2))]];download('MURAL_TRACE_PRO_V5_3_1_FIXED.zip',makeZIP(items),'application/zip');return}if(!state.paths.length){toast('Najprije generiraj vektor.');return}let enc=new TextEncoder(),items=[];for(let mode of ['vector','outline','boundaries','kolorit','tones'])items.push([`mural_${mode}.svg`,enc.encode(svgPaths(mode))]);items.push(['project.json',enc.encode(projectJSON())]);items.push(['palette.json',enc.encode(JSON.stringify(state.colors.map((hex,i)=>({classId:i,hex,helper:i>1&&i<state.colors.length-1?helperColors[(i-2+helperColors.length)%helperColors.length]:null})),null,2))]);let extension=state.file.type==='image/png'?'png':state.file.type==='image/webp'?'webp':'jpg';items.push([`original.${extension}`,new Uint8Array(await state.file.arrayBuffer())]);let manifest={version:'5.0 browser build',vectorEngine:'LOCAL_JS_CONTOUR_NOT_VTRACER',fileCount:items.length+1,generated:new Date().toISOString(),unimplemented:['AI image service','professional node editor','face-aware segmentation']};items.push(['manifest.json',enc.encode(JSON.stringify(manifest,null,2))]);download('MURAL_TRACE_PRO_V5_PROJECT.zip',makeZIP(items),'application/zip');toast('ZIP paket uspješno pripremljen.')}
+async function exportPackage(){if(hasVTracer()){let enc=new TextEncoder(),items=[...['vector','outline','boundaries','kolorit'].map(mode=>[`mural_${mode}_vtracer.svg`,enc.encode(unifiedVTracerSVG(mode))]),['project.json',enc.encode(projectJSON())],['original.'+(state.file.type==='image/png'?'png':state.file.type==='image/webp'?'webp':'jpg'),new Uint8Array(await state.file.arrayBuffer())],['manifest.json',enc.encode(JSON.stringify({engine:'VTracer browser WASM',geometry:'shared VTracer SVG paths; stroke outlines are approximate and are not deduplicated region boundaries',generated:new Date().toISOString()},null,2))]];download('MURAL_TRACE_PRO_V5_3_1_FULL_FRAME.zip',makeZIP(items),'application/zip');return}if(!state.paths.length){toast('Najprije generiraj vektor.');return}let enc=new TextEncoder(),items=[];for(let mode of ['vector','outline','boundaries','kolorit','tones'])items.push([`mural_${mode}.svg`,enc.encode(svgPaths(mode))]);items.push(['project.json',enc.encode(projectJSON())]);items.push(['palette.json',enc.encode(JSON.stringify(state.colors.map((hex,i)=>({classId:i,hex,helper:i>1&&i<state.colors.length-1?helperColors[(i-2+helperColors.length)%helperColors.length]:null})),null,2))]);let extension=state.file.type==='image/png'?'png':state.file.type==='image/webp'?'webp':'jpg';items.push([`original.${extension}`,new Uint8Array(await state.file.arrayBuffer())]);let manifest={version:'5.0 browser build',vectorEngine:'LOCAL_JS_CONTOUR_NOT_VTRACER',fileCount:items.length+1,generated:new Date().toISOString(),unimplemented:['AI image service','professional node editor','face-aware segmentation']};items.push(['manifest.json',enc.encode(JSON.stringify(manifest,null,2))]);download('MURAL_TRACE_PRO_V5_PROJECT.zip',makeZIP(items),'application/zip');toast('ZIP paket uspješno pripremljen.')}
 $('traceEngine').addEventListener('change',()=>{$('engineName').textContent=$('traceEngine').value==='vtracer'?'VTRACER WASM':'LOCAL JS';});$('allExport').onclick=()=>exportPackage().catch(e=>toast('ZIP pogreška: '+e.message));
